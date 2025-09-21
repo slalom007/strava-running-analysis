@@ -46,7 +46,7 @@ plt.figure(figsize=(12,6))
 plt.plot(weekly_distance.index, weekly_distance.values, marker='o', linestyle='-')
 
 # Add titles and labels to the plot
-plt.title("Weekly running performance", fontsize=16)
+plt.title("Weekly Running Performance - Data Visualisation Project", fontsize=16)
 plt.xlabel("Date", fontsize=12)
 plt.ylabel("Distance [km]", fontsize=12)
 plt.grid(True)
