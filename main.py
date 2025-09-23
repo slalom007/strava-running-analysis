@@ -72,7 +72,21 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
+## Visualize Weekly Running Time
+# Resample the 'moving_time' column on a weekly basis and calculate the sum
+# Convert seconds to minutes by dividing by 60
+weekly_time = df['moving_time'].resample('W').sum() / 60
 
+plt.figure(figsize=(12, 6))
+plt.bar(weekly_time.index, weekly_time.values, color='green')
+
+# Add titles and labels to the plot
+plt.title('Weekly Running Time', fontsize=16)
+plt.xlabel('Date', fontsize=12)
+plt.ylabel('Time (minutes)', fontsize=12)
+plt.grid(axis='y')
+plt.tight_layout()
+plt.show()
 
 
 
