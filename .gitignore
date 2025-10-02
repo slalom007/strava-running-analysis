@@ -1,2 +1,20 @@
-.venv/
+# Python cache
 __pycache__/
+*.pyc
+
+# IDE settings folder
+.idea/
+
+# Virtual environment folder
+.venv/
+venv/
+
+# Generated output files
+*.html
+
+# Data files
+*.csv
+*.zip
+
+# Configuration file with secrets
+config.py

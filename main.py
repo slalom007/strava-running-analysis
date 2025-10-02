@@ -1,98 +1,112 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# The file path to your Strava CSV export
-# Make sure to change this to your exact file path!
-csv_path=r'C:\Users\Felhasználó\Desktop\Balogh László\python\Running_performance\strava_export\activities.csv'
-
-# Read the CSV file into a pandas DataFrame
-try:
-    df = pd.read_csv(csv_path, sep=',')
-    print("Succesfully read data from the file!")
-
-except FileNotFoundError:
-    print(f"Error, The file was not found at the specified path: {csv_path}")
-    exit()
-
-# Select the most important columns for the project
-df = df[['Activity Date', 'Distance', 'Moving Time', 'Activity Type']]
-
-# Rename columns for clarity
-df.columns=["date", "distance", "moving_time", "type"]
-
-# Convert the 'date' column to datetime format
-df["date"] = pd.to_datetime(df["date"])
-
-# Filter for 'Run' activities only
-df=df[df["type"]=="Run"]
-
-# Clean the 'distance' column by removing thousand separators and converting to float
-df['distance'] = df['distance'].str.replace('.', '', regex=False).astype(float)
-
-# Convert distance to kilometers (assuming it's given in units of 100)
-df['distance'] = df['distance'] / 100
-
-# Calculate pace in minutes per kilometer
-df['pace']=(df['moving_time']/60)/df['distance']
-
-# Convert the 'date' column to datetime format
-df['date'] = pd.to_datetime(df['date'])
-
-# Set the date column as the DataFrame index
-df.set_index('date', inplace=True)
-
-# Resample the data on a weekly basis and calculate the total distance
-weekly_distance = df['distance'].resample('W').sum()
-weekly_pace = df['pace'].resample('W').mean()
-
-print("\nWeekly ran distances:")
-print(weekly_distance)
-
-# Visualize the weekly running performance
-plt.figure(figsize=(12,6))
-plt.plot(weekly_distance.index, weekly_distance.values, marker='o', linestyle='-')
-
-# Add titles and labels to the plot
-plt.title("Weekly Running Performance - Data Visualisation Project", fontsize=16)
-plt.xlabel("Date", fontsize=12)
-plt.ylabel("Distance [km]", fontsize=12)
-plt.grid(True)
-plt.tight_layout()
-plt.show()
-
-## Visualize Weekly Average Pace
-plt.figure(figsize=(12, 6))
-plt.plot(weekly_pace.index, weekly_pace.values, marker='o', linestyle='-', color='red')
-
-# Add titles and labels to the plot
-plt.title('Weekly Average Pace', fontsize=16)
-plt.xlabel('Date', fontsize=12)
-plt.ylabel('Pace (min/km)', fontsize=12)
-plt.grid(True)
-plt.tight_layout()
-plt.show()
-
-## Visualize Weekly Running Time
-# Resample the 'moving_time' column on a weekly basis and calculate the sum
-# Convert seconds to minutes by dividing by 60
-weekly_time = df['moving_time'].resample('W').sum() / 60
-
-plt.figure(figsize=(12, 6))
-plt.bar(weekly_time.index, weekly_time.values, color='green')
-
-# Add titles and labels to the plot
-plt.title('Weekly Running Time', fontsize=16)
-plt.xlabel('Date', fontsize=12)
-plt.ylabel('Time (minutes)', fontsize=12)
-plt.grid(axis='y')
-plt.tight_layout()
-plt.show()
+import requests
+import folium
+import polyline
+from folium.plugins import HeatMap
+import config
 
 
+# --- 1. AUTHENTICATION: Get a fresh Access Token using the Refresh Token ---
+
+def get_access_token():
+    """
+    Uses the long-lived Refresh Token to get a short-lived Access Token.
+    """
+    print("Requesting a new Access Token from Strava...")
+
+    auth_url = "https://www.strava.com/oauth/token"
+    payload = {
+        'client_id': config.CLIENT_ID,
+        'client_secret': config.CLIENT_SECRET,
+        'refresh_token': config.REFRESH_TOKEN,
+        'grant_type': "refresh_token",
+        'f': 'json'
+    }
+
+    response = requests.post(auth_url, data=payload)
+    response.raise_for_status()
+
+    access_token = response.json()['access_token']
+    print("Successfully obtained a new Access Token!")
+    return access_token
 
 
+# --- 2. DATA FETCHING: Get all activities from Strava ---
+
+def get_all_activities(access_token):
+    """
+    Fetches all activities page by page from the Strava API.
+    """
+    print("Fetching activities from Strava... This may take a while.")
+
+    activities_url = "https://www.strava.com/api/v3/athlete/activities"
+    headers = {'Authorization': f'Bearer {access_token}'}
+    all_activities = []
+    page = 1
+
+    while True:
+        params = {'per_page': 200, 'page': page}
+        response = requests.get(activities_url, headers=headers, params=params).json()
+
+        if not response:
+            break
+
+        all_activities.extend(response)
+        print(f"Fetched page {page} with {len(response)} activities.")
+        page += 1
+
+    print(f"Finished fetching. Total activities found: {len(all_activities)}")
+    return all_activities
 
 
+# --- 3. DATA PROCESSING: Decode polylines to get GPS coordinates ---
+
+def get_all_coordinates(activities):
+    """
+    Extracts and decodes the summary polyline from each 'Run' activity.
+    """
+    print("Decoding polylines for 'Run' activities to get GPS coordinates...")
+    all_coords = []
+
+    for activity in activities:
+        # Check if the activity is a 'Run' AND has a summary polyline
+        if activity['type'] == 'Run' and activity['map']['summary_polyline']:
+            # Decode the polyline into a list of [lat, lon] coordinates
+            decoded_points = polyline.decode(activity['map']['summary_polyline'])
+            all_coords.extend(decoded_points)
+
+    print(f"Successfully decoded GPS data. Total points found: {len(all_coords)}")
+    return all_coords
 
 
+# --- 4. MAP CREATION: Generate the heatmap ---
 
+def create_heatmap(coordinates):
+    """
+    Creates a heatmap from a list of coordinates and saves it to an HTML file.
+    """
+    if not coordinates:
+        print("No running coordinates found to create a map.")
+        return
+
+    print("Creating the heatmap...")
+
+    map_center = coordinates[0]
+    m = folium.Map(location=map_center, zoom_start=13, tiles="CartoDB dark_matter")
+
+    HeatMap(coordinates).add_to(m)
+
+    output_file = "strava_run_heatmap.html"  # Changed the output file name
+    m.save(output_file)
+    print(f"Success! Heatmap for runs saved to '{output_file}'")
+
+
+# --- MAIN EXECUTION ---
+if __name__ == "__main__":
+    try:
+        fresh_access_token = get_access_token()
+        activities = get_all_activities(fresh_access_token)
+        coords = get_all_coordinates(activities)
+        create_heatmap(coords)
+
+    except Exception as e:
+        print(f"\nAn error occurred during the process: {e}")
